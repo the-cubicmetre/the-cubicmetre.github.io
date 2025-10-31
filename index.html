@@ -1,0 +1,2156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Item Set Builder</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .pixelated {
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+        .dragging-cell {
+            opacity: 0.5;
+        }
+        .drag-over-cell {
+            outline: 3px solid #f59e0b;
+            outline-offset: 2px;
+        }
+        .dragging-item {
+            opacity: 0.4;
+        }
+        .drag-over-slot {
+            background-color: #292524 !important;
+            border-color: #f59e0b !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect } = React;
+
+        // Icons as SVG components
+        const PlusIcon = () => (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+        );
+
+        const XIcon = () => (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        );
+
+        const GripIcon = () => (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="9" cy="12" r="1"></circle>
+                <circle cx="9" cy="5" r="1"></circle>
+                <circle cx="9" cy="19" r="1"></circle>
+                <circle cx="15" cy="12" r="1"></circle>
+                <circle cx="15" cy="5" r="1"></circle>
+                <circle cx="15" cy="19" r="1"></circle>
+            </svg>
+        );
+
+        const SearchIcon = () => (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+        );
+
+        const PaletteIcon = () => (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="13.5" cy="6.5" r=".5"></circle>
+                <circle cx="17.5" cy="10.5" r=".5"></circle>
+                <circle cx="8.5" cy="7.5" r=".5"></circle>
+                <circle cx="6.5" cy="12.5" r=".5"></circle>
+                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"></path>
+            </svg>
+        );
+
+        const ColorSortIcon = () => (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="7" height="7" fill="#ff6b6b" stroke="none"></rect>
+                <rect x="14" y="3" width="7" height="7" fill="#ffd93d" stroke="none"></rect>
+                <rect x="3" y="14" width="7" height="7" fill="#6bcf7f" stroke="none"></rect>
+                <rect x="14" y="14" width="7" height="7" fill="#4d96ff" stroke="none"></rect>
+            </svg>
+        );
+
+        const NamespaceSortIcon = () => (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <text x="2" y="10" fontSize="8" fill="currentColor" fontFamily="monospace">A_B</text>
+                <text x="2" y="20" fontSize="8" fill="currentColor" fontFamily="monospace">A_C</text>
+                <path d="M 16 8 L 20 12 L 16 16" strokeLinecap="round" strokeLinejoin="round"></path>
+            </svg>
+        );
+
+        const TypeSortIcon = () => (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <text x="2" y="8" fontSize="7" fill="currentColor" fontFamily="monospace">_B</text>
+                <text x="2" y="16" fontSize="7" fill="currentColor" fontFamily="monospace">_B</text>
+                <text x="2" y="24" fontSize="7" fill="currentColor" fontFamily="monospace">_C</text>
+                <path d="M 16 8 L 20 12 L 16 16" strokeLinecap="round" strokeLinejoin="round"></path>
+            </svg>
+        );
+
+        function HueRangePicker({ hueRange, satRange, lumRange, onHueChange, onSatChange, onLumChange }) {
+            const size = 180;
+            const thickness = 25;
+            const radius = (size - thickness) / 2;
+            const centerX = size / 2;
+            const centerY = size / 2;
+
+            const handleHueMouseDown = (e, isStart) => {
+                e.preventDefault();
+                const svg = e.currentTarget.closest('svg');
+                const rect = svg.getBoundingClientRect();
+
+                const handleMouseMove = (moveEvent) => {
+                    const x = moveEvent.clientX - rect.left - centerX;
+                    const y = moveEvent.clientY - rect.top - centerY;
+                    let angle = Math.atan2(y, x) * (180 / Math.PI);
+                    angle = (angle + 90 + 360) % 360;
+
+                    if (isStart) {
+                        onHueChange([angle, hueRange[1]]);
+                    } else {
+                        onHueChange([hueRange[0], angle]);
+                    }
+                };
+
+                const handleMouseUp = () => {
+                    document.removeEventListener('mousemove', handleMouseMove);
+                    document.removeEventListener('mouseup', handleMouseUp);
+                };
+
+                handleMouseMove(e);
+                document.addEventListener('mousemove', handleMouseMove);
+                document.addEventListener('mouseup', handleMouseUp);
+            };
+
+            const getCoords = (angle) => {
+                const rad = (angle - 90) * (Math.PI / 180);
+                return {
+                    x: centerX + radius * Math.cos(rad),
+                    y: centerY + radius * Math.sin(rad)
+                };
+            };
+
+            const start = getCoords(hueRange[0]);
+            const end = getCoords(hueRange[1]);
+
+            // Calculate average color
+            let avgHue = (hueRange[0] + hueRange[1]) / 2;
+            if (Math.abs(hueRange[1] - hueRange[0]) > 180) {
+                avgHue = (avgHue + 180) % 360;
+            }
+            const avgSat = (satRange[0] + satRange[1]) / 2;
+            const avgLum = (lumRange[0] + lumRange[1]) / 2;
+            const avgColor = `hsl(${avgHue}, ${avgSat}%, ${avgLum}%)`;
+
+            return (
+                <div className="flex items-center gap-3">
+                    {/* Saturation Slider */}
+                    <div className="flex flex-col items-center gap-2">
+                        <div className="text-xs text-stone-400">S</div>
+                        <div className="relative h-32 flex items-center gap-1">
+                            {/* Range indicator box */}
+                            <div
+                                className="absolute border border-amber-500 pointer-events-none"
+                                style={{
+                                    left: '-4px',
+                                    right: '-4px',
+                                    top: `${(1 - satRange[1] / 100) * 100}%`,
+                                    bottom: `${satRange[0]}%`
+                                }}
+                            ></div>
+
+                            {/* Left handle for min value */}
+                            <div
+                                className="w-3 h-3 bg-amber-500 rounded-full cursor-ns-resize z-20 hover:bg-amber-400 transition-colors border-2 border-black"
+                                style={{
+                                    position: 'absolute',
+                                    left: '-4px',
+                                    top: `${(1 - satRange[0] / 100) * 100}%`,
+                                    transform: 'translateY(-50%)'
+                                }}
+                                onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    const container = e.currentTarget.parentElement;
+                                    const rect = container.getBoundingClientRect();
+                                    const handleMove = (moveEvent) => {
+                                        const y = Math.max(0, Math.min(rect.height, moveEvent.clientY - rect.top));
+                                        const value = Math.round((1 - y / rect.height) * 100);
+                                        onSatChange([Math.min(value, satRange[1]), satRange[1]]);
+                                    };
+                                    const handleUp = () => {
+                                        document.removeEventListener('mousemove', handleMove);
+                                        document.removeEventListener('mouseup', handleUp);
+                                    };
+                                    handleMove(e);
+                                    document.addEventListener('mousemove', handleMove);
+                                    document.addEventListener('mouseup', handleUp);
+                                }}
+                            ></div>
+
+                            {/* Slider track */}
+                            <div className="relative w-6 h-full rounded overflow-hidden">
+                                <div className="absolute inset-0 bg-gradient-to-b from-gray-500 to-white"></div>
+                            </div>
+
+                            {/* Right handle for max value */}
+                            <div
+                                className="w-3 h-3 bg-amber-500 rounded-full cursor-ns-resize z-20 hover:bg-amber-400 transition-colors border-2 border-black"
+                                style={{
+                                    position: 'absolute',
+                                    right: '-4px',
+                                    top: `${(1 - satRange[1] / 100) * 100}%`,
+                                    transform: 'translateY(-50%)'
+                                }}
+                                onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    const container = e.currentTarget.parentElement;
+                                    const rect = container.getBoundingClientRect();
+                                    const handleMove = (moveEvent) => {
+                                        const y = Math.max(0, Math.min(rect.height, moveEvent.clientY - rect.top));
+                                        const value = Math.round((1 - y / rect.height) * 100);
+                                        onSatChange([satRange[0], Math.max(value, satRange[0])]);
+                                    };
+                                    const handleUp = () => {
+                                        document.removeEventListener('mousemove', handleMove);
+                                        document.removeEventListener('mouseup', handleUp);
+                                    };
+                                    handleMove(e);
+                                    document.addEventListener('mousemove', handleMove);
+                                    document.addEventListener('mouseup', handleUp);
+                                }}
+                            ></div>
+                        </div>
+                        <div className="text-xs text-stone-400 w-12 text-center">{satRange[0]}-{satRange[1]}</div>
+                    </div>
+
+                    {/* Hue Ring */}
+                    <div className="relative" style={{ width: size, height: size }}>
+                        <svg width={size} height={size}>
+                            {/* Draw hue wheel as segments */}
+                            {Array.from({ length: 36 }).map((_, i) => {
+                                const startAngle = (i * 10 - 90) * (Math.PI / 180);
+                                const endAngle = ((i + 1) * 10 - 90) * (Math.PI / 180);
+                                const hue = i * 10;
+
+                                const x1 = centerX + radius * Math.cos(startAngle);
+                                const y1 = centerY + radius * Math.sin(startAngle);
+                                const x2 = centerX + radius * Math.cos(endAngle);
+                                const y2 = centerY + radius * Math.sin(endAngle);
+
+                                return (
+                                    <path
+                                        key={i}
+                                        d={`M ${x1} ${y1} A ${radius} ${radius} 0 0 1 ${x2} ${y2}`}
+                                        fill="none"
+                                        stroke={`hsl(${hue + 5}, 100%, 50%)`}
+                                        strokeWidth={thickness}
+                                    />
+                                );
+                            })}
+
+                            {/* Range arc between markers */}
+                            {(() => {
+                                const innerRadius = radius - thickness / 2 - 2;
+
+                                // Check if entire range is selected (0-360 or very close to it)
+                                const isFullRange = (hueRange[0] === 0 && hueRange[1] === 360) ||
+                                                   (Math.abs(hueRange[1] - hueRange[0]) >= 359);
+
+                                if (isFullRange) {
+                                    // Draw a complete circle when full range is selected
+                                    return (
+                                        <circle
+                                            cx={centerX}
+                                            cy={centerY}
+                                            r={innerRadius}
+                                            fill="none"
+                                            stroke="#fbbf24"
+                                            strokeWidth="3"
+                                        />
+                                    );
+                                } else {
+                                    // Draw arc between the two markers
+                                    const startAngle = (hueRange[0] - 90) * (Math.PI / 180);
+                                    const endAngle = (hueRange[1] - 90) * (Math.PI / 180);
+
+                                    const x1 = centerX + innerRadius * Math.cos(startAngle);
+                                    const y1 = centerY + innerRadius * Math.sin(startAngle);
+                                    const x2 = centerX + innerRadius * Math.cos(endAngle);
+                                    const y2 = centerY + innerRadius * Math.sin(endAngle);
+
+                                    const arcLength = ((hueRange[1] - hueRange[0] + 360) % 360);
+                                    const largeArc = arcLength > 180 ? 1 : 0;
+
+                                    return (
+                                        <path
+                                            d={`M ${x1} ${y1} A ${innerRadius} ${innerRadius} 0 ${largeArc} 1 ${x2} ${y2}`}
+                                            fill="none"
+                                            stroke="#fbbf24"
+                                            strokeWidth="3"
+                                            strokeLinecap="round"
+                                        />
+                                    );
+                                }
+                            })()}
+
+                            {/* Start marker */}
+                            <circle
+                                cx={start.x}
+                                cy={start.y}
+                                r="6"
+                                fill="#fbbf24"
+                                stroke="#000"
+                                strokeWidth="2"
+                                className="cursor-pointer"
+                                onMouseDown={(e) => handleHueMouseDown(e, true)}
+                            />
+
+                            {/* End marker */}
+                            <circle
+                                cx={end.x}
+                                cy={end.y}
+                                r="6"
+                                fill="#fbbf24"
+                                stroke="#000"
+                                strokeWidth="2"
+                                className="cursor-pointer"
+                                onMouseDown={(e) => handleHueMouseDown(e, false)}
+                            />
+                        </svg>
+                        
+                        {/* Center circle showing average color */}
+                        <div 
+                            className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-12 h-12 rounded-full border-4 border-stone-700"
+                            style={{ backgroundColor: avgColor }}
+                        ></div>
+                    </div>
+
+                    {/* Luminosity Slider */}
+                    <div className="flex flex-col items-center gap-2">
+                        <div className="text-xs text-stone-400">L</div>
+                        <div className="relative h-32 flex items-center gap-1">
+                            {/* Range indicator box */}
+                            <div
+                                className="absolute border border-amber-500 pointer-events-none"
+                                style={{
+                                    left: '-4px',
+                                    right: '-4px',
+                                    top: `${(1 - lumRange[1] / 100) * 100}%`,
+                                    bottom: `${lumRange[0]}%`
+                                }}
+                            ></div>
+
+                            {/* Left handle for min value */}
+                            <div
+                                className="w-3 h-3 bg-amber-500 rounded-full cursor-ns-resize z-20 hover:bg-amber-400 transition-colors border-2 border-black"
+                                style={{
+                                    position: 'absolute',
+                                    left: '-4px',
+                                    top: `${(1 - lumRange[0] / 100) * 100}%`,
+                                    transform: 'translateY(-50%)'
+                                }}
+                                onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    const container = e.currentTarget.parentElement;
+                                    const rect = container.getBoundingClientRect();
+                                    const handleMove = (moveEvent) => {
+                                        const y = Math.max(0, Math.min(rect.height, moveEvent.clientY - rect.top));
+                                        const value = Math.round((1 - y / rect.height) * 100);
+                                        onLumChange([Math.min(value, lumRange[1]), lumRange[1]]);
+                                    };
+                                    const handleUp = () => {
+                                        document.removeEventListener('mousemove', handleMove);
+                                        document.removeEventListener('mouseup', handleUp);
+                                    };
+                                    handleMove(e);
+                                    document.addEventListener('mousemove', handleMove);
+                                    document.addEventListener('mouseup', handleUp);
+                                }}
+                            ></div>
+
+                            {/* Slider track */}
+                            <div className="relative w-6 h-full rounded overflow-hidden">
+                                <div className="absolute inset-0 bg-gradient-to-b from-white via-gray-500 to-black"></div>
+                            </div>
+
+                            {/* Right handle for max value */}
+                            <div
+                                className="w-3 h-3 bg-amber-500 rounded-full cursor-ns-resize z-20 hover:bg-amber-400 transition-colors border-2 border-black"
+                                style={{
+                                    position: 'absolute',
+                                    right: '-4px',
+                                    top: `${(1 - lumRange[1] / 100) * 100}%`,
+                                    transform: 'translateY(-50%)'
+                                }}
+                                onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    const container = e.currentTarget.parentElement;
+                                    const rect = container.getBoundingClientRect();
+                                    const handleMove = (moveEvent) => {
+                                        const y = Math.max(0, Math.min(rect.height, moveEvent.clientY - rect.top));
+                                        const value = Math.round((1 - y / rect.height) * 100);
+                                        onLumChange([lumRange[0], Math.max(value, lumRange[0])]);
+                                    };
+                                    const handleUp = () => {
+                                        document.removeEventListener('mousemove', handleMove);
+                                        document.removeEventListener('mouseup', handleUp);
+                                    };
+                                    handleMove(e);
+                                    document.addEventListener('mousemove', handleMove);
+                                    document.addEventListener('mouseup', handleUp);
+                                }}
+                            ></div>
+                        </div>
+                        <div className="text-xs text-stone-400 w-12 text-center">{lumRange[0]}-{lumRange[1]}</div>
+                    </div>
+                </div>
+            );
+        }
+
+        function MinecraftItemBuilder() {
+            const [catalogueItems, setCatalogueItems] = useState([]);
+            const [cells, setCells] = useState([{ id: 1, slots: Array(50).fill(null) }]);
+            const [draggedItem, setDraggedItem] = useState(null);
+            const [draggedSlot, setDraggedSlot] = useState(null);
+            const [draggedCell, setDraggedCell] = useState(null);
+            const [dragOverSlot, setDragOverSlot] = useState(null);
+            const [nextCellId, setNextCellId] = useState(2);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [loading, setLoading] = useState(true);
+            const [showColorPicker, setShowColorPicker] = useState(false);
+            const [hueRange, setHueRange] = useState([0, 360]);
+            const [satRange, setSatRange] = useState([0, 100]);
+            const [lumRange, setLumRange] = useState([0, 100]);
+            const [moveAllMode, setMoveAllMode] = useState(false);
+            const [selectedSlots, setSelectedSlots] = useState([]); // Array of {cellId, slotIndex}
+            const [lastSelectedSlot, setLastSelectedSlot] = useState(null); // For shift-click range selection
+            const [dragOverCell, setDragOverCell] = useState(null); // Track which cell is being dragged over
+            const [categoryFilter, setCategoryFilter] = useState('');
+            const [groupFilter, setGroupFilter] = useState('');
+            const [materialFilter, setMaterialFilter] = useState('');
+            const [showCategorySuggestions, setShowCategorySuggestions] = useState(false);
+            const [showGroupSuggestions, setShowGroupSuggestions] = useState(false);
+            const [showMaterialSuggestions, setShowMaterialSuggestions] = useState(false);
+            const [catalogueWidth, setCatalogueWidth] = useState(400); // Width in pixels
+            const [isDraggingDivider, setIsDraggingDivider] = useState(false);
+            const [history, setHistory] = useState([]); // Store last 10 cell states for undo
+
+            // Load items from JSON file
+            useEffect(() => {
+                fetch('items.json?v=' + Date.now())
+                    .then(response => response.json())
+                    .then(data => {
+                        setCatalogueItems(data);
+                        setLoading(false);
+                    })
+                    .catch(error => {
+                        console.error('Error loading items:', error);
+                        alert('Failed to load items.json. Make sure the file exists in the same folder.');
+                        setLoading(false);
+                    });
+            }, []);
+
+            // Handle divider dragging
+            useEffect(() => {
+                const handleMouseMove = (e) => {
+                    if (isDraggingDivider) {
+                        const newWidth = e.clientX;
+                        if (newWidth >= 300 && newWidth <= 800) {
+                            setCatalogueWidth(newWidth);
+                        }
+                    }
+                };
+
+                const handleMouseUp = () => {
+                    setIsDraggingDivider(false);
+                };
+
+                if (isDraggingDivider) {
+                    document.addEventListener('mousemove', handleMouseMove);
+                    document.addEventListener('mouseup', handleMouseUp);
+                    return () => {
+                        document.removeEventListener('mousemove', handleMouseMove);
+                        document.removeEventListener('mouseup', handleMouseUp);
+                    };
+                }
+            }, [isDraggingDivider]);
+
+            const usedItemIds = useMemo(() => {
+                const used = new Set();
+                cells.forEach(cell => {
+                    cell.slots.forEach(slot => {
+                        if (slot) used.add(slot.id);
+                    });
+                });
+                return used;
+            }, [cells]);
+
+            // Calculate tag suggestions (only include tags that appear on more than 2 items)
+            const tagSuggestions = useMemo(() => {
+                const categoryCounts = {};
+                const groupCounts = {};
+                const materialCounts = {};
+
+                catalogueItems.forEach(item => {
+                    // Category and group are now arrays
+                    if (item.category && Array.isArray(item.category)) {
+                        item.category.forEach(cat => {
+                            categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+                        });
+                    }
+                    if (item.group && Array.isArray(item.group)) {
+                        item.group.forEach(grp => {
+                            groupCounts[grp] = (groupCounts[grp] || 0) + 1;
+                        });
+                    }
+                    // Material remains a single string
+                    if (item.material) {
+                        materialCounts[item.material] = (materialCounts[item.material] || 0) + 1;
+                    }
+                });
+
+                return {
+                    categories: Object.keys(categoryCounts).filter(cat => categoryCounts[cat] > 2).sort(),
+                    groups: Object.keys(groupCounts).filter(grp => groupCounts[grp] > 2).sort(),
+                    materials: Object.keys(materialCounts).filter(mat => materialCounts[mat] > 1).sort()
+                };
+            }, [catalogueItems]);
+
+            const availableItems = useMemo(() => {
+                let filtered = catalogueItems.filter(item => !usedItemIds.has(item.id));
+
+                // Apply tag filters (exact match, category and group are arrays)
+                if (categoryFilter) {
+                    const catLower = categoryFilter.toLowerCase();
+                    filtered = filtered.filter(item =>
+                        item.category && Array.isArray(item.category) &&
+                        item.category.some(cat => cat.toLowerCase() === catLower)
+                    );
+                }
+
+                if (groupFilter) {
+                    const grpLower = groupFilter.toLowerCase();
+                    filtered = filtered.filter(item =>
+                        item.group && Array.isArray(item.group) &&
+                        item.group.some(grp => grp.toLowerCase() === grpLower)
+                    );
+                }
+
+                if (materialFilter) {
+                    const matLower = materialFilter.toLowerCase();
+                    filtered = filtered.filter(item =>
+                        item.material && item.material.toLowerCase() === matLower
+                    );
+                }
+
+                // Apply color filter if not at default ranges
+                const isColorFiltered = hueRange[0] !== 0 || hueRange[1] !== 360 ||
+                                       satRange[0] !== 0 || satRange[1] !== 100 ||
+                                       lumRange[0] !== 0 || lumRange[1] !== 100;
+
+                if (isColorFiltered) {
+                    filtered = filtered.filter(item => {
+                        if (!item.color || !item.color.hsl) return false;
+
+                        const [h, s, l] = item.color.hsl;
+
+                        // Handle hue wrapping (e.g., 350-10 should include 0)
+                        let hueMatch;
+                        if (hueRange[0] <= hueRange[1]) {
+                            hueMatch = h >= hueRange[0] && h <= hueRange[1];
+                        } else {
+                            // Wraps around (e.g., 350 to 10)
+                            hueMatch = h >= hueRange[0] || h <= hueRange[1];
+                        }
+
+                        const satMatch = s >= satRange[0] && s <= satRange[1];
+                        const lumMatch = l >= lumRange[0] && l <= lumRange[1];
+
+                        return hueMatch && satMatch && lumMatch;
+                    });
+                }
+
+                // Apply search filter with enhanced logic
+                if (searchTerm !== '') {
+                    // Split by comma for OR groups
+                    const orGroups = searchTerm.split(',').map(t => t.trim()).filter(t => t.length > 0);
+
+                    filtered = filtered.filter(item => {
+                        const itemName = item.name.toLowerCase();
+                        const itemId = item.id.toLowerCase();
+
+                        // Item matches if ANY OR group matches
+                        return orGroups.some(orGroup => {
+                            // Split by & for AND terms within the group
+                            const andTerms = orGroup.split('&').map(t => t.trim()).filter(t => t.length > 0);
+
+                            // All AND terms must match for this OR group to match
+                            return andTerms.every(term => {
+                                const termLower = term.toLowerCase();
+
+                                // Check if term ends with underscore (isolated term match)
+                                if (termLower.endsWith('_')) {
+                                    const isolatedTerm = termLower.slice(0, -1);
+                                    // Match as isolated word in ID (e.g., "stone_" matches "stone_bricks" but not "sandstone")
+                                    const regex = new RegExp(`(^|_)${isolatedTerm}(_|$)`);
+                                    return regex.test(itemId);
+                                } else {
+                                    // Regular substring match on name
+                                    return itemName.includes(termLower);
+                                }
+                            });
+                        });
+                    });
+                }
+
+                return filtered;
+            }, [catalogueItems, usedItemIds, searchTerm, hueRange, satRange, lumRange, categoryFilter, groupFilter, materialFilter]);
+
+            // Save current state to history (keep last 10)
+            const saveToHistory = () => {
+                // Efficient shallow clone of cells
+                const cellsSnapshot = cells.map(cell => ({
+                    ...cell,
+                    slots: [...cell.slots]
+                }));
+
+                const newHistory = [...history, cellsSnapshot];
+                if (newHistory.length > 10) {
+                    newHistory.shift(); // Remove oldest state
+                }
+                setHistory(newHistory);
+            };
+
+            // Undo function
+            const undo = () => {
+                if (history.length > 0) {
+                    const previousState = history[history.length - 1];
+                    setCells(previousState);
+                    setHistory(history.slice(0, -1)); // Remove the state we just restored
+                }
+            };
+
+            // Ctrl+Z handler
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                        e.preventDefault();
+                        undo();
+                    }
+                };
+
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [history, cells]);
+
+            // Auto-scroll when dragging near viewport edges or outside window
+            useEffect(() => {
+                let scrollInterval = null;
+                let lastMouseY = null;
+                let isOutsideWindow = false;
+
+                const updateScroll = () => {
+                    const isDragging = draggedItem || draggedCell || draggedSlot;
+
+                    if (!isDragging) {
+                        if (scrollInterval) {
+                            clearInterval(scrollInterval);
+                            scrollInterval = null;
+                        }
+                        return;
+                    }
+
+                    const scrollSpeed = 10;
+                    const scrollThreshold = 50; // Start scrolling within 50px of edge
+                    const viewportHeight = window.innerHeight;
+
+                    // Clear existing interval
+                    if (scrollInterval) {
+                        clearInterval(scrollInterval);
+                        scrollInterval = null;
+                    }
+
+                    // If mouse left the window, use last known position to determine direction
+                    if (isOutsideWindow && lastMouseY !== null) {
+                        if (lastMouseY < scrollThreshold) {
+                            // Was near top, scroll up
+                            scrollInterval = setInterval(() => {
+                                window.scrollBy(0, -scrollSpeed);
+                            }, 16);
+                        } else if (lastMouseY > viewportHeight - scrollThreshold) {
+                            // Was near bottom, scroll down
+                            scrollInterval = setInterval(() => {
+                                window.scrollBy(0, scrollSpeed);
+                            }, 16);
+                        }
+                    }
+                    // Mouse is inside window
+                    else if (lastMouseY !== null) {
+                        if (lastMouseY < scrollThreshold) {
+                            scrollInterval = setInterval(() => {
+                                window.scrollBy(0, -scrollSpeed);
+                            }, 16);
+                        } else if (lastMouseY > viewportHeight - scrollThreshold) {
+                            scrollInterval = setInterval(() => {
+                                window.scrollBy(0, scrollSpeed);
+                            }, 16);
+                        }
+                    }
+                };
+
+                const handleMouseMove = (e) => {
+                    lastMouseY = e.clientY;
+                    isOutsideWindow = false;
+                    updateScroll();
+                };
+
+                const handleMouseLeave = () => {
+                    // Keep last known position and mark as outside
+                    isOutsideWindow = true;
+                    updateScroll();
+                };
+
+                const handleMouseEnter = () => {
+                    isOutsideWindow = false;
+                };
+
+                const handleMouseUp = () => {
+                    if (scrollInterval) {
+                        clearInterval(scrollInterval);
+                        scrollInterval = null;
+                    }
+                    lastMouseY = null;
+                    isOutsideWindow = false;
+                };
+
+                window.addEventListener('mousemove', handleMouseMove);
+                window.addEventListener('mouseleave', handleMouseLeave);
+                window.addEventListener('mouseenter', handleMouseEnter);
+                window.addEventListener('mouseup', handleMouseUp);
+                window.addEventListener('dragend', handleMouseUp);
+
+                return () => {
+                    if (scrollInterval) clearInterval(scrollInterval);
+                    window.removeEventListener('mousemove', handleMouseMove);
+                    window.removeEventListener('mouseleave', handleMouseLeave);
+                    window.removeEventListener('mouseenter', handleMouseEnter);
+                    window.removeEventListener('mouseup', handleMouseUp);
+                    window.removeEventListener('dragend', handleMouseUp);
+                };
+            }, [draggedItem, draggedCell, draggedSlot]);
+
+            const addCell = () => {
+                saveToHistory();
+                setCells([...cells, { id: nextCellId, slots: Array(50).fill(null) }]);
+                setNextCellId(nextCellId + 1);
+            };
+
+            const removeCell = (cellId) => {
+                saveToHistory();
+                setCells(cells.filter(c => c.id !== cellId));
+            };
+
+            // Export cells to JSON
+            const exportCells = () => {
+                const exportData = cells.map(cell =>
+                    cell.slots.map(slot => slot ? slot.id : null)
+                );
+
+                const dataStr = JSON.stringify(exportData, null, 2);
+                const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(dataBlob);
+
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'minecraft-cells.json';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            };
+
+            // Import cells from JSON
+            const importCells = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const importData = JSON.parse(e.target.result);
+
+                        if (!Array.isArray(importData)) {
+                            alert('Invalid file format: Expected an array of cells');
+                            return;
+                        }
+
+                        // Convert imported data to cell format
+                        const newCells = importData.map((cellData, index) => {
+                            const slots = cellData.map(itemId => {
+                                if (itemId === null) return null;
+                                // Find the item in catalogue by id
+                                const item = catalogueItems.find(i => i.id === itemId);
+                                return item || null;
+                            });
+
+                            // Ensure exactly 50 slots
+                            while (slots.length < 50) slots.push(null);
+                            if (slots.length > 50) slots.length = 50;
+
+                            return {
+                                id: nextCellId + index,
+                                slots: slots
+                            };
+                        });
+
+                        setCells(newCells);
+                        setNextCellId(nextCellId + newCells.length);
+
+                        // Clear selection
+                        setSelectedSlots([]);
+                        setLastSelectedSlot(null);
+                    } catch (error) {
+                        alert('Error parsing file: ' + error.message);
+                    }
+                };
+                reader.readAsText(file);
+
+                // Reset the file input so the same file can be imported again
+                event.target.value = '';
+            };
+
+            // Slot selection handler
+            const handleSlotClick = (e, cellId, slotIndex, item) => {
+                if (!item) return; // Can't select empty slots
+
+                const slotKey = `${cellId}-${slotIndex}`;
+                const isAlreadySelected = selectedSlots.some(s => s.cellId === cellId && s.slotIndex === slotIndex);
+
+                if (e.shiftKey && lastSelectedSlot && lastSelectedSlot.cellId === cellId) {
+                    // Shift-click: Select range from last selected to current
+                    const startIndex = Math.min(lastSelectedSlot.slotIndex, slotIndex);
+                    const endIndex = Math.max(lastSelectedSlot.slotIndex, slotIndex);
+
+                    const rangeSelection = [];
+                    const cell = cells.find(c => c.id === cellId);
+                    for (let i = startIndex; i <= endIndex; i++) {
+                        if (cell.slots[i]) { // Only select filled slots
+                            rangeSelection.push({ cellId, slotIndex: i });
+                        }
+                    }
+                    setSelectedSlots(rangeSelection);
+                } else if (e.ctrlKey || e.metaKey) {
+                    // Ctrl-click: Toggle selection
+                    if (isAlreadySelected) {
+                        setSelectedSlots(selectedSlots.filter(s => !(s.cellId === cellId && s.slotIndex === slotIndex)));
+                    } else {
+                        setSelectedSlots([...selectedSlots, { cellId, slotIndex }]);
+                    }
+                    setLastSelectedSlot({ cellId, slotIndex });
+                } else {
+                    // Normal click: Deselect if clicking already selected item, otherwise select only this slot
+                    if (isAlreadySelected && selectedSlots.length === 1) {
+                        // Clicking the only selected item - deselect it
+                        setSelectedSlots([]);
+                        setLastSelectedSlot(null);
+                    } else {
+                        // Select only this slot
+                        setSelectedSlots([{ cellId, slotIndex }]);
+                        setLastSelectedSlot({ cellId, slotIndex });
+                    }
+                }
+            };
+
+            // Clear selection when clicking empty space
+            const handleBackgroundClick = () => {
+                setSelectedSlots([]);
+                setLastSelectedSlot(null);
+            };
+
+            // Item drag handlers
+            const handleItemDragStart = (e, item, source) => {
+                if (source.type === 'catalogue') {
+                    setDraggedItem({ item, source });
+                } else if (source.type === 'slot') {
+                    // Check if dragging a selected slot
+                    const isDraggingSelected = selectedSlots.some(
+                        s => s.cellId === source.cellId && s.slotIndex === source.slotIndex
+                    );
+
+                    if (isDraggingSelected && selectedSlots.length > 1) {
+                        // Dragging multiple selected items
+                        setDraggedItem({ item, source });
+                        setDraggedSlot({
+                            cellId: source.cellId,
+                            slotIndex: source.slotIndex,
+                            item,
+                            multiSelect: true,
+                            selectedSlots: [...selectedSlots]
+                        });
+                    } else {
+                        // Dragging single item
+                        setDraggedItem({ item, source });
+                        setDraggedSlot({ cellId: source.cellId, slotIndex: source.slotIndex, item });
+                    }
+                }
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', ''); // Improves drag performance
+            };
+
+            const handleItemDragEnd = (e) => {
+                setDraggedItem(null);
+                setDraggedSlot(null);
+                setDragOverSlot(null);
+            };
+
+            const handleItemDragOver = (e, cellId, slotIndex) => {
+                // Skip if we're dragging a cell (not an item)
+                if (draggedCell) {
+                    e.stopPropagation(); // Prevent event from bubbling to cell
+                    return;
+                }
+
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+
+                // Update drag over state for visual feedback
+                const slotKey = `${cellId}-${slotIndex}`;
+                if (dragOverSlot !== slotKey) {
+                    setDragOverSlot(slotKey);
+                }
+            };
+
+            const handleItemDragLeave = (e) => {
+                // Skip if we're dragging a cell (not an item)
+                if (draggedCell) {
+                    return;
+                }
+
+                // Only clear if we're actually leaving (not entering a child)
+                if (!e.currentTarget.contains(e.relatedTarget)) {
+                    setDragOverSlot(null);
+                }
+            };
+
+            const handleItemDrop = (e, cellId, slotIndex) => {
+                // Skip if we're dragging a cell (not an item)
+                if (draggedCell) {
+                    return;
+                }
+
+                e.preventDefault();
+                setDragOverSlot(null);
+
+                saveToHistory(); // Save state before making changes
+
+                const targetSlot = cells.find(c => c.id === cellId).slots[slotIndex];
+
+                if (draggedItem && draggedItem.source.type === 'catalogue') {
+                    // Dragging from catalogue - always INSERT (displace items)
+                    if (moveAllMode) {
+                        // Fill all empty slots with filtered items
+                        setCells(cells.map(cell => {
+                            if (cell.id === cellId) {
+                                const newSlots = [...cell.slots];
+                                let itemIndex = 0;
+
+                                for (let i = 0; i < newSlots.length && itemIndex < availableItems.length; i++) {
+                                    if (newSlots[i] === null) {
+                                        newSlots[i] = availableItems[itemIndex];
+                                        itemIndex++;
+                                    }
+                                }
+
+                                return { ...cell, slots: newSlots };
+                            }
+                            return cell;
+                        }));
+                    } else {
+                        // Single item from catalogue - INSERT at target position
+                        setCells(cells.map(cell => {
+                            if (cell.id === cellId) {
+                                const newSlots = [...cell.slots];
+                                // Remove nulls to compact
+                                const compacted = newSlots.filter(slot => slot !== null);
+
+                                // Insert at target position
+                                compacted.splice(slotIndex, 0, draggedItem.item);
+
+                                // Trim to 50 slots
+                                if (compacted.length > 50) {
+                                    compacted.length = 50;
+                                }
+
+                                // Pad with nulls
+                                while (compacted.length < 50) {
+                                    compacted.push(null);
+                                }
+
+                                return { ...cell, slots: compacted };
+                            }
+                            return cell;
+                        }));
+                    }
+                }
+                else if (draggedSlot) {
+                    if (draggedSlot.multiSelect) {
+                        // Dragging multiple selected items
+                        const itemsToMove = [];
+
+                        // Collect items from selected slots (sorted by slot index)
+                        const sortedSelection = [...draggedSlot.selectedSlots].sort((a, b) => {
+                            if (a.cellId !== b.cellId) return a.cellId - b.cellId;
+                            return a.slotIndex - b.slotIndex;
+                        });
+
+                        sortedSelection.forEach(slot => {
+                            const sourceCell = cells.find(c => c.id === slot.cellId);
+                            if (sourceCell && sourceCell.slots[slot.slotIndex]) {
+                                itemsToMove.push({
+                                    item: sourceCell.slots[slot.slotIndex],
+                                    sourceCellId: slot.cellId,
+                                    sourceSlotIndex: slot.slotIndex
+                                });
+                            }
+                        });
+
+                        // Find the target cell and use the drop target slot as insertion point
+                        const targetCell = cells.find(c => c.id === cellId);
+
+                        // Check if we're moving within the same cell
+                        const isSameCell = itemsToMove.every(item => item.sourceCellId === cellId);
+
+                        // Proceed with the move
+                        setCells(cells.map(cell => {
+                            if (cell.id === cellId) {
+                                // Working with the target cell
+                                let newSlots = [...cell.slots];
+
+                                if (isSameCell) {
+                                    // Moving within same cell - remove selected items, then insert at drop position
+                                    const selectedIndices = draggedSlot.selectedSlots
+                                        .filter(s => s.cellId === cellId)
+                                        .map(s => s.slotIndex)
+                                        .sort((a, b) => a - b);
+
+                                    // Check if drop target is within the selection itself
+                                    const isDropWithinSelection = selectedIndices.includes(slotIndex);
+                                    if (isDropWithinSelection) {
+                                        // Dropping on ourselves - no change needed
+                                        return cell;
+                                    }
+
+                                    // Step 1: Collect selected items and remove them
+                                    const selectedItems = selectedIndices.map(idx => newSlots[idx]);
+                                    const remainingSlots = newSlots.filter((slot, idx) => !selectedIndices.includes(idx));
+
+                                    // Step 2: Calculate adjusted insertion index
+                                    // Count how many selected slots are before the drop target
+                                    const selectedBeforeTarget = selectedIndices.filter(idx => idx < slotIndex).length;
+                                    const adjustedInsertIndex = slotIndex - selectedBeforeTarget;
+
+                                    // Step 3: Insert selected items at the adjusted position
+                                    const finalSlots = [
+                                        ...remainingSlots.slice(0, adjustedInsertIndex),
+                                        ...selectedItems,
+                                        ...remainingSlots.slice(adjustedInsertIndex)
+                                    ];
+
+                                    // Pad with nulls to maintain 50 slots
+                                    while (finalSlots.length < 50) {
+                                        finalSlots.push(null);
+                                    }
+
+                                    return { ...cell, slots: finalSlots };
+                                } else {
+                                    // Moving from different cell(s)
+                                    // Step 1: Remove items being moved from source cells (if this is a source cell)
+                                    itemsToMove.forEach(({ sourceCellId, sourceSlotIndex }) => {
+                                        if (cell.id === sourceCellId) {
+                                            newSlots[sourceSlotIndex] = null;
+                                        }
+                                    });
+
+                                    // Step 2: Compact to remove gaps
+                                    let compacted = newSlots.filter(slot => slot !== null);
+
+                                    // Step 3: Calculate insertion point in compacted array
+                                    let insertIndex = slotIndex;
+                                    // Adjust if some slots before target were null
+                                    let nullsBefore = 0;
+                                    for (let i = 0; i < slotIndex && i < cell.slots.length; i++) {
+                                        if (cell.slots[i] === null) nullsBefore++;
+                                    }
+                                    insertIndex = Math.max(0, slotIndex - nullsBefore);
+                                    insertIndex = Math.min(insertIndex, compacted.length);
+
+                                    // Step 4: Check if items will fit
+                                    const totalItems = compacted.length + itemsToMove.length;
+                                    if (totalItems > 50) {
+                                        // Won't fit - cancel operation
+                                        // Return original slots for this cell
+                                        return cell;
+                                    }
+
+                                    // Step 5: Insert moved items at insertion point
+                                    const finalSlots = [
+                                        ...compacted.slice(0, insertIndex),
+                                        ...itemsToMove.map(item => item.item),
+                                        ...compacted.slice(insertIndex)
+                                    ];
+
+                                    // Pad with nulls
+                                    while (finalSlots.length < 50) {
+                                        finalSlots.push(null);
+                                    }
+
+                                    return { ...cell, slots: finalSlots };
+                                }
+                            } else {
+                                // Not the target cell - just remove moved items and compact
+                                const newSlots = [...cell.slots];
+                                itemsToMove.forEach(({ sourceCellId, sourceSlotIndex }) => {
+                                    if (cell.id === sourceCellId) {
+                                        newSlots[sourceSlotIndex] = null;
+                                    }
+                                });
+
+                                const compacted = newSlots.filter(slot => slot !== null);
+                                while (compacted.length < 50) {
+                                    compacted.push(null);
+                                }
+
+                                return { ...cell, slots: compacted };
+                            }
+                        }));
+
+                        setSelectedSlots([]);
+                        setLastSelectedSlot(null);
+                    } else {
+                        // Dragging single item - INSERT (displace items)
+                        const isSameCell = draggedSlot.cellId === cellId;
+
+                        setCells(cells.map(cell => {
+                            let newSlots = [...cell.slots];
+
+                            if (isSameCell && cell.id === cellId) {
+                                // Moving within same cell
+                                // Remove the item from source
+                                newSlots.splice(draggedSlot.slotIndex, 1);
+                                newSlots.push(null);
+
+                                // Compact
+                                const compacted = newSlots.filter(slot => slot !== null);
+
+                                // Calculate adjusted insert index
+                                let adjustedIndex = slotIndex;
+                                if (draggedSlot.slotIndex < slotIndex) {
+                                    adjustedIndex--;
+                                }
+                                adjustedIndex = Math.max(0, Math.min(adjustedIndex, compacted.length));
+
+                                // Insert at position
+                                compacted.splice(adjustedIndex, 0, draggedSlot.item);
+
+                                // Pad with nulls
+                                while (compacted.length < 50) {
+                                    compacted.push(null);
+                                }
+
+                                return { ...cell, slots: compacted };
+                            } else if (cell.id === draggedSlot.cellId) {
+                                // Source cell - remove item and compact
+                                newSlots[draggedSlot.slotIndex] = null;
+                                const compacted = newSlots.filter(slot => slot !== null);
+                                while (compacted.length < 50) {
+                                    compacted.push(null);
+                                }
+                                return { ...cell, slots: compacted };
+                            } else if (cell.id === cellId) {
+                                // Target cell - insert item
+                                const compacted = newSlots.filter(slot => slot !== null);
+
+                                // Insert at target position
+                                compacted.splice(slotIndex, 0, draggedSlot.item);
+
+                                // Trim if over 50
+                                if (compacted.length > 50) {
+                                    compacted.length = 50;
+                                }
+
+                                // Pad with nulls
+                                while (compacted.length < 50) {
+                                    compacted.push(null);
+                                }
+
+                                return { ...cell, slots: compacted };
+                            }
+
+                            return cell;
+                        }));
+                    }
+                }
+
+                setDraggedItem(null);
+                setDraggedSlot(null);
+            };
+
+            // Calculate HSL color distance between two items
+            const getColorDistance = (item1, item2) => {
+                if (!item1 || !item2 || !item1.color || !item2.color) return Infinity;
+
+                const hsl1 = item1.color.hsl;
+                const hsl2 = item2.color.hsl;
+
+                if (!hsl1 || !hsl2) return Infinity;
+
+                // Hue is circular (0-360 degrees), so we need special distance calculation
+                let hueDiff = Math.abs(hsl1[0] - hsl2[0]);
+                if (hueDiff > 180) hueDiff = 360 - hueDiff;
+
+                // Normalize hue difference to 0-100 scale (like saturation and luminosity)
+                hueDiff = (hueDiff / 180) * 100;
+
+                const satDiff = Math.abs(hsl1[1] - hsl2[1]);
+                const lumDiff = Math.abs(hsl1[2] - hsl2[2]);
+
+                // Weighted Euclidean distance (hue is more important for visual similarity)
+                return Math.sqrt((hueDiff * 2) ** 2 + satDiff ** 2 + lumDiff ** 2);
+            };
+
+            // Sort cell items by color similarity (greedy nearest neighbor)
+            const sortCellByColor = (cellId) => {
+                saveToHistory();
+
+                setCells(cells.map(cell => {
+                    if (cell.id !== cellId) return cell;
+
+                    // Get all non-null items
+                    const items = cell.slots.filter(item => item !== null);
+                    if (items.length <= 1) return cell; // Nothing to sort
+
+                    // Greedy nearest neighbor algorithm
+                    const sorted = [items[0]]; // Start with first item
+                    const remaining = items.slice(1);
+
+                    while (remaining.length > 0) {
+                        const current = sorted[sorted.length - 1];
+
+                        // Find closest item to current
+                        let closestIndex = 0;
+                        let closestDistance = getColorDistance(current, remaining[0]);
+
+                        for (let i = 1; i < remaining.length; i++) {
+                            const distance = getColorDistance(current, remaining[i]);
+                            if (distance < closestDistance) {
+                                closestDistance = distance;
+                                closestIndex = i;
+                            }
+                        }
+
+                        // Add closest item to sorted list and remove from remaining
+                        sorted.push(remaining[closestIndex]);
+                        remaining.splice(closestIndex, 1);
+                    }
+
+                    // Pad with nulls to maintain 50 slots
+                    while (sorted.length < 50) {
+                        sorted.push(null);
+                    }
+
+                    return { ...cell, slots: sorted };
+                }));
+            };
+
+            // Calculate character similarity between two tokens (used as tiebreaker)
+            const getTokenCharacterSimilarity = (token1, token2) => {
+                if (token1 === token2) return 1; // Perfect match
+
+                const longer = token1.length > token2.length ? token1 : token2;
+                const shorter = token1.length > token2.length ? token2 : token1;
+
+                // Count matching characters
+                let matches = 0;
+                for (let i = 0; i < shorter.length; i++) {
+                    if (longer.includes(shorter[i])) matches++;
+                }
+
+                // Normalize to 0-1 range
+                return matches / longer.length;
+            };
+
+            // Calculate namespace similarity between two items
+            // Priority: 1) Same material, 2) Exact token matches, 3) Character similarity
+            const getNamespaceSimilarity = (item1, item2) => {
+                if (!item1 || !item2 || !item1.id || !item2.id) return { material: 0, tokens: 0, chars: 0 };
+
+                // Check if materials match (highest priority)
+                const materialMatch = (item1.material && item2.material && item1.material === item2.material) ? 1 : 0;
+
+                // Split IDs into tokens
+                const tokens1 = item1.id.split('_');
+                const tokens2 = item2.id.split('_');
+
+                // Count exact token matches (second priority)
+                let exactTokenMatches = 0;
+                for (const token1 of tokens1) {
+                    for (const token2 of tokens2) {
+                        if (token1 === token2) {
+                            exactTokenMatches++;
+                        }
+                    }
+                }
+
+                // Calculate character similarity between tokens (tiebreaker)
+                let totalCharSimilarity = 0;
+                let comparisons = 0;
+                for (const token1 of tokens1) {
+                    for (const token2 of tokens2) {
+                        totalCharSimilarity += getTokenCharacterSimilarity(token1, token2);
+                        comparisons++;
+                    }
+                }
+                const avgCharSimilarity = comparisons > 0 ? totalCharSimilarity / comparisons : 0;
+
+                return { material: materialMatch, tokens: exactTokenMatches, chars: avgCharSimilarity };
+            };
+
+            // Load and parse compound tokens that must stay together
+            const [compoundTokens, setCompoundTokens] = React.useState([]);
+
+            React.useEffect(() => {
+                fetch('stokens.txt?v=' + Date.now())
+                    .then(response => response.text())
+                    .then(text => {
+                        const tokens = text.split('\n')
+                            .map(line => line.trim())
+                            .filter(line => line.length > 0);
+                        // Sort by length descending to match longer compounds first
+                        tokens.sort((a, b) => b.length - a.length);
+                        setCompoundTokens(tokens);
+                    })
+                    .catch(err => console.error('Failed to load compound tokens:', err));
+            }, []);
+
+            // Normalize an ID by replacing compound tokens with single units
+            const normalizeId = (id, compounds) => {
+                let normalized = id;
+                const replacements = [];
+
+                compounds.forEach((compound, idx) => {
+                    if (normalized.includes(compound)) {
+                        const placeholder = `COMPOUND${idx}`;
+                        normalized = normalized.replace(new RegExp(compound, 'g'), placeholder);
+                        replacements.push({ placeholder, original: compound });
+                    }
+                });
+
+                return { normalized, replacements };
+            };
+
+            // Denormalize by restoring compound tokens
+            const denormalizeId = (id, replacements) => {
+                let denormalized = id;
+                replacements.forEach(({ placeholder, original }) => {
+                    denormalized = denormalized.replace(new RegExp(placeholder, 'g'), original);
+                });
+                return denormalized;
+            };
+
+            // Find the best split point for all items in a cell
+            // Returns the index where we should split tokens into [prefix tokens] and [suffix tokens]
+            const findBestSplitPoint = (items) => {
+                if (items.length === 0) return 1;
+
+                // Normalize all IDs first
+                const normalized = items.map(item => {
+                    const { normalized: normId, replacements } = normalizeId(item.id, compoundTokens);
+                    return { id: normId, replacements };
+                });
+
+                // Get all tokenized normalized IDs
+                const allTokens = normalized.map(n => n.id.split('_'));
+                const maxLength = Math.max(...allTokens.map(t => t.length));
+
+                // Try each possible split point and score it
+                let bestSplit = 1; // Default: split after first token
+                let bestScore = 0;
+
+                for (let splitIdx = 1; splitIdx < maxLength; splitIdx++) {
+                    // Count unique prefixes and suffixes at this split point
+                    const prefixes = new Set();
+                    const suffixes = new Set();
+
+                    allTokens.forEach(tokens => {
+                        if (tokens.length >= splitIdx) {
+                            const prefix = tokens.slice(0, splitIdx).join('_');
+                            const suffix = tokens.slice(splitIdx).join('_');
+                            if (prefix) prefixes.add(prefix);
+                            if (suffix) suffixes.add(suffix);
+                        }
+                    });
+
+                    // Good split: both prefixes and suffixes have variety, and they're balanced
+                    // Score = min(uniquePrefixes, uniqueSuffixes) to favor balanced splits
+                    const score = Math.min(prefixes.size, suffixes.size);
+
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestSplit = splitIdx;
+                    }
+                }
+
+                return bestSplit;
+            };
+
+            // Split an item ID into prefix and suffix based on split point
+            // Returns { prefix: string, suffix: string }
+            const splitItemId = (item, splitPoint) => {
+                if (!item || !item.id) return { prefix: '', suffix: '' };
+
+                // Normalize the ID
+                const { normalized, replacements } = normalizeId(item.id, compoundTokens);
+
+                // Split normalized ID
+                const tokens = normalized.split('_');
+                const prefixNorm = tokens.slice(0, splitPoint).join('_');
+                const suffixNorm = tokens.slice(splitPoint).join('_');
+
+                // Denormalize back
+                const prefix = denormalizeId(prefixNorm, replacements);
+                const suffix = denormalizeId(suffixNorm, replacements);
+
+                return { prefix, suffix };
+            };
+
+            // Sort cell items by namespace: groups by prefix, arranges suffixes in sequence
+            // Example: [pale_oak_planks, pale_oak_stairs, pale_oak_slab, dark_oak_planks, dark_oak_stairs, dark_oak_slab]
+            const sortCellByNamespace = (cellId) => {
+                saveToHistory();
+
+                setCells(cells.map(cell => {
+                    if (cell.id !== cellId) return cell;
+
+                    const items = cell.slots.filter(item => item !== null);
+                    if (items.length <= 1) return cell;
+
+                    // Find the best split point for this cell
+                    const splitPoint = findBestSplitPoint(items);
+
+                    // Split all items
+                    const itemsWithSplit = items.map(item => {
+                        const { prefix, suffix } = splitItemId(item, splitPoint);
+                        return { item, prefix, suffix };
+                    });
+
+                    // Group by prefix
+                    const groups = {};
+                    itemsWithSplit.forEach(({ item, prefix, suffix }) => {
+                        const key = prefix || '_no_prefix';
+                        if (!groups[key]) groups[key] = [];
+                        groups[key].push({ item, prefix, suffix });
+                    });
+
+                    const sorted = [];
+
+                    // Establish pattern from first group
+                    const firstKey = splitItemId(items[0], splitPoint).prefix || '_no_prefix';
+                    const firstGroup = groups[firstKey];
+
+                    if (firstGroup && firstGroup.length > 0) {
+                        // Sort first group by similarity, extract suffix pattern
+                        const firstSorted = [firstGroup[0]];
+                        const remaining = firstGroup.slice(1);
+
+                        while (remaining.length > 0) {
+                            const current = firstSorted[firstSorted.length - 1];
+                            let bestIdx = 0;
+                            let bestSim = getNamespaceSimilarity(current.item, remaining[0].item);
+
+                            for (let i = 1; i < remaining.length; i++) {
+                                const sim = getNamespaceSimilarity(current.item, remaining[i].item);
+                                if (sim.tokens > bestSim.tokens ||
+                                    (sim.tokens === bestSim.tokens && sim.chars > bestSim.chars)) {
+                                    bestSim = sim;
+                                    bestIdx = i;
+                                }
+                            }
+
+                            firstSorted.push(remaining[bestIdx]);
+                            remaining.splice(bestIdx, 1);
+                        }
+
+                        // Extract suffix pattern
+                        const pattern = firstSorted.map(({ suffix }) => suffix);
+
+                        // Add first group
+                        sorted.push(...firstSorted.map(({ item }) => item));
+                        delete groups[firstKey];
+
+                        // Apply pattern to other groups
+                        Object.keys(groups).forEach(key => {
+                            const group = groups[key];
+                            const groupSorted = [];
+
+                            pattern.forEach(pat => {
+                                const idx = group.findIndex(({ suffix }) => suffix === pat);
+                                if (idx !== -1) {
+                                    groupSorted.push(group[idx].item);
+                                    group.splice(idx, 1);
+                                }
+                            });
+
+                            // Add remaining
+                            groupSorted.push(...group.map(({ item }) => item));
+                            sorted.push(...groupSorted);
+                        });
+                    }
+
+                    // Pad with nulls to maintain 50 slots
+                    while (sorted.length < 50) {
+                        sorted.push(null);
+                    }
+
+                    return { ...cell, slots: sorted };
+                }));
+            };
+
+            // Sort cell items by type: groups by suffix, arranges prefixes in sequence
+            // Example: [pale_oak_planks, dark_oak_planks, pale_oak_stairs, dark_oak_stairs]
+            const sortCellByType = (cellId) => {
+                saveToHistory();
+
+                setCells(cells.map(cell => {
+                    if (cell.id !== cellId) return cell;
+
+                    const items = cell.slots.filter(item => item !== null);
+                    if (items.length <= 1) return cell;
+
+                    // Find the best split point for this cell
+                    const splitPoint = findBestSplitPoint(items);
+
+                    // Split all items
+                    const itemsWithSplit = items.map(item => {
+                        const { prefix, suffix } = splitItemId(item, splitPoint);
+                        return { item, prefix, suffix };
+                    });
+
+                    // Group by suffix (type)
+                    const groups = {};
+                    itemsWithSplit.forEach(({ item, prefix, suffix }) => {
+                        const key = suffix || '_no_suffix';
+                        if (!groups[key]) groups[key] = [];
+                        groups[key].push({ item, prefix, suffix });
+                    });
+
+                    const sorted = [];
+
+                    // Establish prefix order from first type group
+                    const firstKey = splitItemId(items[0], splitPoint).suffix || '_no_suffix';
+                    const firstGroup = groups[firstKey];
+
+                    if (firstGroup && firstGroup.length > 0) {
+                        // Sort first group by similarity, extract prefix order
+                        const firstSorted = [firstGroup[0]];
+                        const remaining = firstGroup.slice(1);
+
+                        while (remaining.length > 0) {
+                            const current = firstSorted[firstSorted.length - 1];
+                            let bestIdx = 0;
+                            let bestSim = getNamespaceSimilarity(current.item, remaining[0].item);
+
+                            for (let i = 1; i < remaining.length; i++) {
+                                const sim = getNamespaceSimilarity(current.item, remaining[i].item);
+                                if (sim.tokens > bestSim.tokens ||
+                                    (sim.tokens === bestSim.tokens && sim.chars > bestSim.chars)) {
+                                    bestSim = sim;
+                                    bestIdx = i;
+                                }
+                            }
+
+                            firstSorted.push(remaining[bestIdx]);
+                            remaining.splice(bestIdx, 1);
+                        }
+
+                        // Extract prefix order
+                        const prefixOrder = firstSorted.map(({ prefix }) => prefix);
+
+                        // Add first group
+                        sorted.push(...firstSorted.map(({ item }) => item));
+                        delete groups[firstKey];
+
+                        // Apply prefix order to other suffix groups
+                        Object.keys(groups).forEach(key => {
+                            const group = groups[key];
+                            const groupSorted = [];
+
+                            prefixOrder.forEach(pre => {
+                                const idx = group.findIndex(({ prefix }) => prefix === pre);
+                                if (idx !== -1) {
+                                    groupSorted.push(group[idx].item);
+                                    group.splice(idx, 1);
+                                }
+                            });
+
+                            // Add remaining
+                            groupSorted.push(...group.map(({ item }) => item));
+                            sorted.push(...groupSorted);
+                        });
+                    }
+
+                    // Pad with nulls to maintain 50 slots
+                    while (sorted.length < 50) {
+                        sorted.push(null);
+                    }
+
+                    return { ...cell, slots: sorted };
+                }));
+            };
+            const clearSlot = (cellId, slotIndex) => {
+                saveToHistory();
+
+                // If there's a selection, clear all selected items
+                if (selectedSlots.length > 0) {
+                    setCells(cells.map(cell => {
+                        const newSlots = [...cell.slots];
+                        // Remove all selected items from this cell
+                        const slotsToRemove = selectedSlots
+                            .filter(s => s.cellId === cell.id)
+                            .map(s => s.slotIndex)
+                            .sort((a, b) => b - a); // Sort descending to remove from end first
+
+                        slotsToRemove.forEach(idx => {
+                            newSlots.splice(idx, 1);
+                            newSlots.push(null);
+                        });
+
+                        return { ...cell, slots: newSlots };
+                    }));
+
+                    // Clear the selection
+                    setSelectedSlots([]);
+                    setLastSelectedSlot(null);
+                } else {
+                    // Single item removal
+                    setCells(cells.map(cell => {
+                        if (cell.id === cellId) {
+                            const newSlots = [...cell.slots];
+                            // Remove the item at the slot index
+                            newSlots.splice(slotIndex, 1);
+                            // Add null at the end to maintain 50 slots
+                            newSlots.push(null);
+                            return { ...cell, slots: newSlots };
+                        }
+                        return cell;
+                    }));
+                }
+            };
+
+            // Cell drag handlers
+            const handleCellDragStart = (e, cellId) => {
+                const isFromHeader = e.target.closest('.cell-drag-handle') !== null;
+                if (!isFromHeader) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+                setDraggedCell(cellId);
+                e.currentTarget.classList.add('dragging-cell');
+                e.dataTransfer.effectAllowed = 'move';
+            };
+
+            const handleCellDragEnd = (e) => {
+                e.currentTarget.classList.remove('dragging-cell');
+                setDraggedCell(null);
+                setDragOverCell(null);
+            };
+
+            const handleCellDragOver = (e, cellId) => {
+                // Skip if not dragging a cell
+                if (!draggedCell) return;
+
+                e.preventDefault();
+                e.stopPropagation(); // Prevent bubbling from child elements
+
+                // Update state only if dragging over a different cell
+                if (draggedCell !== cellId && dragOverCell !== cellId) {
+                    setDragOverCell(cellId);
+                }
+            };
+
+            const handleCellDragLeave = (e, cellId) => {
+                // Skip if not dragging a cell
+                if (!draggedCell) return;
+
+                // Clear drag over state
+                if (dragOverCell === cellId) {
+                    setDragOverCell(null);
+                }
+            };
+
+            const handleCellDrop = (e, targetCellId) => {
+                e.preventDefault();
+                setDragOverCell(null);
+
+                if (draggedCell && draggedCell !== targetCellId) {
+                    // Clone cells efficiently using structured clone or simple spread
+                    const cellsSnapshot = cells.map(cell => ({
+                        ...cell,
+                        slots: [...cell.slots]
+                    }));
+
+                    const newHistory = [...history, cellsSnapshot];
+                    if (newHistory.length > 10) {
+                        newHistory.shift();
+                    }
+                    setHistory(newHistory);
+
+                    const draggedIndex = cells.findIndex(c => c.id === draggedCell);
+                    const targetIndex = cells.findIndex(c => c.id === targetCellId);
+
+                    const newCells = [...cells];
+                    const [removed] = newCells.splice(draggedIndex, 1);
+                    newCells.splice(targetIndex, 0, removed);
+
+                    setCells(newCells);
+                }
+
+                setDraggedCell(null);
+            };
+
+            return (
+                <div className="flex h-screen bg-stone-800 text-stone-100">
+                    {loading ? (
+                        <div className="flex items-center justify-center w-full">
+                            <div className="text-amber-400 text-xl">Loading items...</div>
+                        </div>
+                    ) : (
+                        <>
+                    {/* Catalogue Sidebar */}
+                    <div style={{ width: `${catalogueWidth}px` }} className="bg-stone-900 flex flex-col">
+                        <div className="p-4 border-b-2 border-stone-700">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-xl font-bold text-amber-400">Item Catalogue</h2>
+                                <div className="text-xs text-stone-400">
+                                    {availableItems.length} / {catalogueItems.length}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div className="flex-1 overflow-y-auto p-4">
+                            {availableItems.length > 0 ? (
+                                <div className="grid grid-cols-3 gap-2">
+                                    {availableItems.map(item => (
+                                        <div
+                                            key={item.id}
+                                            draggable
+                                            onDragStart={(e) => handleItemDragStart(e, item, { type: 'catalogue' })}
+                                            onDragEnd={handleItemDragEnd}
+                                            className="bg-stone-800 border-2 border-stone-600 p-2 rounded cursor-grab active:cursor-grabbing hover:border-amber-600 transition-colors"
+                                            title={item.name}
+                                        >
+                                            <img
+                                                src={item.sprite}
+                                                alt={item.name}
+                                                className="w-8 h-8 mx-auto pixelated pointer-events-none"
+                                            />
+                                            <div className="text-xs text-center mt-1 truncate pointer-events-none">{item.name}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center text-stone-500 mt-8">
+                                    <p className="text-sm">
+                                        {searchTerm ? 'No items match your search' : 'All items assigned!'}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Draggable Divider */}
+                    <div
+                        onMouseDown={() => setIsDraggingDivider(true)}
+                        className="w-1 bg-stone-700 hover:bg-amber-600 cursor-col-resize transition-colors"
+                        style={{ userSelect: 'none' }}
+                    />
+
+                    {/* Main Workspace and Filter Panel Container */}
+                    <div className="flex-1 flex flex-col">
+                        {/* Filter Panel */}
+                        <div className="bg-stone-900 border-b-2 border-stone-700 p-4">
+                            <div className="flex items-center gap-4">
+                                {/* Move All Checkbox */}
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={moveAllMode}
+                                        onChange={(e) => setMoveAllMode(e.target.checked)}
+                                        className="w-4 h-4 cursor-pointer accent-amber-500"
+                                    />
+                                    <span className="text-sm text-stone-300">Move All</span>
+                                </label>
+
+                                {/* Search */}
+                                <div className="relative flex-1">
+                                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-stone-500">
+                                        <SearchIcon />
+                                    </div>
+                                    <input
+                                        type="text"
+                                        placeholder="Search items..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="w-full pl-10 pr-3 py-1.5 bg-stone-800 border border-stone-600 rounded focus:outline-none focus:border-amber-600 text-sm"
+                                    />
+                                </div>
+
+                                {/* Advanced Filters Toggle */}
+                                <button
+                                    onClick={() => setShowColorPicker(!showColorPicker)}
+                                    className={`px-3 py-1.5 rounded transition-colors whitespace-nowrap ${showColorPicker ? 'bg-amber-600 text-white' : 'bg-stone-800 text-stone-300 hover:bg-stone-700'}`}
+                                    title="Advanced Filters"
+                                >
+                                    Advanced Filters
+                                </button>
+
+                                {/* Reset Color Filter Button */}
+                                <button
+                                    onClick={() => {
+                                        setHueRange([0, 360]);
+                                        setSatRange([0, 100]);
+                                        setLumRange([0, 100]);
+                                    }}
+                                    className="px-3 py-1.5 bg-stone-700 hover:bg-stone-600 rounded text-xs transition-colors whitespace-nowrap"
+                                >
+                                    Reset Color
+                                </button>
+
+                                {/* Export Button */}
+                                <button
+                                    onClick={exportCells}
+                                    className="px-3 py-1.5 bg-blue-700 hover:bg-blue-600 rounded text-xs transition-colors whitespace-nowrap"
+                                    title="Export cells to JSON"
+                                >
+                                    Export
+                                </button>
+
+                                {/* Import Button */}
+                                <label className="px-3 py-1.5 bg-green-700 hover:bg-green-600 rounded text-xs transition-colors whitespace-nowrap cursor-pointer" title="Import cells from JSON">
+                                    Import
+                                    <input
+                                        type="file"
+                                        accept=".json"
+                                        onChange={importCells}
+                                        className="hidden"
+                                    />
+                                </label>
+
+                                {/* Cell Counter */}
+                                <div className="px-3 py-1.5 bg-stone-900 rounded text-xs text-stone-300 whitespace-nowrap">
+                                    Cells: {cells.length}
+                                </div>
+                            </div>
+
+                            {/* Advanced Filters Panel */}
+                            {showColorPicker && (
+                                <div className="mt-4 p-4 bg-stone-800 rounded">
+                                    <div className="flex gap-6">
+                                        {/* Left side: Tag Filters */}
+                                        <div className="flex flex-col gap-3 min-w-[200px]">
+                                            <div className="text-sm font-semibold text-amber-400 mb-1">Tag Filters</div>
+
+                                            {/* Category Filter */}
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Category..."
+                                                    value={categoryFilter}
+                                                    onChange={(e) => setCategoryFilter(e.target.value)}
+                                                    onFocus={() => setShowCategorySuggestions(true)}
+                                                    onBlur={() => setTimeout(() => setShowCategorySuggestions(false), 200)}
+                                                    className="w-full px-3 py-1.5 bg-stone-700 border border-stone-600 rounded focus:outline-none focus:border-amber-600 text-sm"
+                                                />
+                                                {showCategorySuggestions && !tagSuggestions.categories.some(cat => cat.toLowerCase() === categoryFilter.toLowerCase()) && (
+                                                    <div className="absolute z-50 w-full mt-1 bg-stone-700 border border-stone-600 rounded shadow-lg max-h-96 overflow-y-auto">
+                                                        {tagSuggestions.categories
+                                                            .filter(cat => !categoryFilter || cat.toLowerCase().includes(categoryFilter.toLowerCase()))
+                                                            .map(cat => (
+                                                                <div
+                                                                    key={cat}
+                                                                    onClick={() => {
+                                                                        setCategoryFilter(cat);
+                                                                        setShowCategorySuggestions(false);
+                                                                    }}
+                                                                    className="px-3 py-1.5 hover:bg-stone-600 cursor-pointer text-sm"
+                                                                >
+                                                                    {cat}
+                                                                </div>
+                                                            ))}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Group Filter */}
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Group..."
+                                                    value={groupFilter}
+                                                    onChange={(e) => setGroupFilter(e.target.value)}
+                                                    onFocus={() => setShowGroupSuggestions(true)}
+                                                    onBlur={() => setTimeout(() => setShowGroupSuggestions(false), 200)}
+                                                    className="w-full px-3 py-1.5 bg-stone-700 border border-stone-600 rounded focus:outline-none focus:border-amber-600 text-sm"
+                                                />
+                                                {showGroupSuggestions && !tagSuggestions.groups.some(grp => grp.toLowerCase() === groupFilter.toLowerCase()) && (
+                                                    <div className="absolute z-50 w-full mt-1 bg-stone-700 border border-stone-600 rounded shadow-lg max-h-96 overflow-y-auto">
+                                                        {tagSuggestions.groups
+                                                            .filter(grp => !groupFilter || grp.toLowerCase().includes(groupFilter.toLowerCase()))
+                                                            .map(grp => (
+                                                                <div
+                                                                    key={grp}
+                                                                    onClick={() => {
+                                                                        setGroupFilter(grp);
+                                                                        setShowGroupSuggestions(false);
+                                                                    }}
+                                                                    className="px-3 py-1.5 hover:bg-stone-600 cursor-pointer text-sm"
+                                                                >
+                                                                    {grp}
+                                                                </div>
+                                                            ))}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Material Filter */}
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Material..."
+                                                    value={materialFilter}
+                                                    onChange={(e) => setMaterialFilter(e.target.value)}
+                                                    onFocus={() => setShowMaterialSuggestions(true)}
+                                                    onBlur={() => setTimeout(() => setShowMaterialSuggestions(false), 200)}
+                                                    className="w-full px-3 py-1.5 bg-stone-700 border border-stone-600 rounded focus:outline-none focus:border-amber-600 text-sm"
+                                                />
+                                                {showMaterialSuggestions && !tagSuggestions.materials.some(mat => mat.toLowerCase() === materialFilter.toLowerCase()) && (
+                                                    <div className="absolute z-50 w-full mt-1 bg-stone-700 border border-stone-600 rounded shadow-lg max-h-96 overflow-y-auto">
+                                                        {tagSuggestions.materials
+                                                            .filter(mat => !materialFilter || mat.toLowerCase().includes(materialFilter.toLowerCase()))
+                                                            .map(mat => (
+                                                                <div
+                                                                    key={mat}
+                                                                    onClick={() => {
+                                                                        setMaterialFilter(mat);
+                                                                        setShowMaterialSuggestions(false);
+                                                                    }}
+                                                                    className="px-3 py-1.5 hover:bg-stone-600 cursor-pointer text-sm"
+                                                                >
+                                                                    {mat}
+                                                                </div>
+                                                            ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Right side: Color Picker */}
+                                        <div className="flex-1 flex flex-col items-center">
+                                            <div className="text-sm font-semibold text-amber-400 mb-2">Color Filter</div>
+                                            <HueRangePicker
+                                                hueRange={hueRange}
+                                                satRange={satRange}
+                                                lumRange={lumRange}
+                                                onHueChange={setHueRange}
+                                                onSatChange={setSatRange}
+                                                onLumChange={setLumRange}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Main Workspace */}
+                        <div className="flex-1 p-6 overflow-auto" onClick={handleBackgroundClick}>
+                        <div className="flex flex-wrap gap-6">
+                            {cells.map((cell, cellIndex) => {
+                                const isDragOverThisCell = dragOverCell === cell.id;
+                                return (
+                                <div
+                                    key={cell.id}
+                                    className={`bg-stone-900 border-2 rounded-lg p-4 cell-container transition-all ${
+                                        isDragOverThisCell ? 'border-amber-500' : 'border-stone-700'
+                                    }`}
+                                    draggable={false}
+                                    onDragOver={(e) => handleCellDragOver(e, cell.id)}
+                                    onDragLeave={(e) => handleCellDragLeave(e, cell.id)}
+                                    onDrop={(e) => handleCellDrop(e, cell.id)}
+                                >
+                                    <div 
+                                        className="flex justify-between items-center mb-3 min-w-max cell-drag-handle"
+                                        draggable
+                                        onDragStart={(e) => handleCellDragStart(e, cell.id)}
+                                        onDragEnd={handleCellDragEnd}
+                                    >
+                                        <div className="flex items-center gap-2 cursor-grab active:cursor-grabbing">
+                                            <GripIcon />
+                                            <span className="text-sm text-stone-400">
+                                                {cell.slots.filter(s => s !== null).length}/50
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    sortCellByColor(cell.id);
+                                                }}
+                                                className="text-amber-400 hover:text-amber-300 transition-colors"
+                                                title="Sort by color similarity"
+                                            >
+                                                <ColorSortIcon />
+                                            </button>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    sortCellByNamespace(cell.id);
+                                                }}
+                                                className="text-blue-400 hover:text-blue-300 transition-colors"
+                                                title="Sort by namespace similarity (materials grouped, types in sequence)"
+                                            >
+                                                <NamespaceSortIcon />
+                                            </button>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    sortCellByType(cell.id);
+                                                }}
+                                                className="text-purple-400 hover:text-purple-300 transition-colors"
+                                                title="Sort by type similarity (types grouped, materials in sequence)"
+                                            >
+                                                <TypeSortIcon />
+                                            </button>
+                                            <button
+                                                onClick={() => removeCell(cell.id)}
+                                                className="text-red-400 hover:text-red-300 transition-colors"
+                                                title="Remove cell"
+                                            >
+                                                <XIcon />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* 5x10 Grid */}
+                                    <div
+                                        className="inline-grid grid-cols-10 gap-1 bg-stone-800 p-2 rounded"
+                                        style={draggedCell ? { pointerEvents: 'none' } : {}}
+                                    >
+                                        {cell.slots.map((slot, slotIndex) => {
+                                            const slotKey = `${cell.id}-${slotIndex}`;
+                                            const isDragOver = dragOverSlot === slotKey;
+                                            const isSelected = selectedSlots.some(s => s.cellId === cell.id && s.slotIndex === slotIndex);
+                                            return (
+                                                <div
+                                                    key={slotIndex}
+                                                    draggable={!!slot}
+                                                    onDragStart={(e) => slot && handleItemDragStart(e, slot, { type: 'slot', cellId: cell.id, slotIndex })}
+                                                    onDragEnd={handleItemDragEnd}
+                                                    onDragOver={(e) => handleItemDragOver(e, cell.id, slotIndex)}
+                                                    onDragLeave={handleItemDragLeave}
+                                                    onDrop={(e) => handleItemDrop(e, cell.id, slotIndex)}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (slot) {
+                                                            handleSlotClick(e, cell.id, slotIndex, slot);
+                                                        } else {
+                                                            // Clicking empty slot clears selection
+                                                            handleBackgroundClick();
+                                                        }
+                                                    }}
+                                                    className={`w-12 h-12 bg-stone-700 border rounded flex items-center justify-center transition-colors relative group ${
+                                                        slot ? 'cursor-grab active:cursor-grabbing' : ''
+                                                    } ${isDragOver ? 'drag-over-slot' : isSelected ? 'border-2 border-blue-400 bg-blue-900 bg-opacity-30' : 'border-stone-600 hover:border-amber-600'}`}
+                                                    title={slot ? slot.name : ''}
+                                                >
+                                                    {slot ? (
+                                                        <>
+                                                            <img
+                                                                src={slot.sprite}
+                                                                alt={slot.name}
+                                                                className="w-10 h-10 pixelated pointer-events-none"
+                                                            />
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    clearSlot(cell.id, slotIndex);
+                                                                }}
+                                                                className="absolute top-0 right-0 bg-red-600 text-white rounded-bl text-xs w-4 h-4 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                                                            >
+                                                                ×
+                                                            </button>
+                                                        </>
+                                                    ) : (
+                                                        <div className="text-stone-600 text-xs pointer-events-none">+</div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                            })}
+
+                            {/* Add Cell Placeholder */}
+                            <div
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    addCell();
+                                }}
+                                className="bg-stone-900 border-2 border-dashed border-stone-600 rounded-lg p-4 cursor-pointer hover:border-amber-600 hover:bg-stone-800 transition-all flex items-center justify-center"
+                                style={{ width: '464px', height: '281px' }}
+                                title="Add new cell"
+                            >
+                                <div className="text-stone-500 hover:text-amber-400 transition-colors">
+                                    <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+
+                        {cells.length === 0 && (
+                            <div className="text-center text-stone-500 mt-20">
+                                <p className="text-xl mb-4">No cells yet</p>
+                                <p>Click the + to create your first item set</p>
+                            </div>
+                        )}
+                        </div>
+                    </div>
+                        </>
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.render(<MinecraftItemBuilder />, document.getElementById('root'));
+    </script>
+</body>
+</html>
