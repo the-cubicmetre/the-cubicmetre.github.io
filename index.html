@@ -446,6 +446,8 @@
             const [categoryFilter, setCategoryFilter] = useState('');
             const [groupFilter, setGroupFilter] = useState('');
             const [materialFilter, setMaterialFilter] = useState('');
+            const [stackSizeFilters, setStackSizeFilters] = useState({ 1: false, 16: false, 64: false });
+            const [rarityFilters, setRarityFilters] = useState({ "common": false, "uncommon": false, "rare": false, "epic": false });
             const [showCategorySuggestions, setShowCategorySuggestions] = useState(false);
             const [showGroupSuggestions, setShowGroupSuggestions] = useState(false);
             const [showMaterialSuggestions, setShowMaterialSuggestions] = useState(false);
@@ -590,6 +592,22 @@
                     );
                 }
 
+                // Apply stack size filter
+                const activeStackSizes = Object.keys(stackSizeFilters).filter(size => stackSizeFilters[size]).map(Number);
+                if (activeStackSizes.length > 0) {
+                    filtered = filtered.filter(item =>
+                        item.stack_size && activeStackSizes.includes(item.stack_size)
+                    );
+                }
+
+                // Apply rarity filter
+                const activeRarities = Object.keys(rarityFilters).filter(size => rarityFilters[size]).map(String);
+                if (activeRarities.length > 0) {
+                    filtered = filtered.filter(item =>
+                        item.rarity && activeRarities.includes(item.rarity)
+                    );
+                }
+
                 // Apply color filter if not at default ranges
                 const isColorFiltered = hueRange[0] !== 0 || hueRange[1] !== 360 ||
                                        satRange[0] !== 0 || satRange[1] !== 100 ||
@@ -651,7 +669,7 @@
                 }
 
                 return filtered;
-            }, [catalogueItems, usedItemIds, searchTerm, hueRange, satRange, lumRange, categoryFilter, groupFilter, materialFilter]);
+            }, [catalogueItems, usedItemIds, searchTerm, hueRange, satRange, lumRange, categoryFilter, groupFilter, materialFilter, stackSizeFilters, rarityFilters]);
 
             // Save current state to history (keep last 10)
             const saveToHistory = () => {
@@ -1998,6 +2016,83 @@
                                                             ))}
                                                     </div>
                                                 )}
+                                            </div>
+                                        </div>
+
+                                        {/* Middle: Stack Size Filter */}
+                                        <div className="mt-2">
+                                            <div className="text-sm font-semibold text-amber-400 mb-1">Stack Size</div>
+                                            <div className="flex flex-col gap-2">
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={stackSizeFilters[1]}
+                                                        onChange={(e) => setStackSizeFilters({ ...stackSizeFilters, 1: e.target.checked })}
+                                                        className="w-4 h-4 cursor-pointer accent-amber-500"
+                                                    />
+                                                    <span className="text-sm text-stone-300">Unstackable</span>
+                                                </label>
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={stackSizeFilters[16]}
+                                                        onChange={(e) => setStackSizeFilters({ ...stackSizeFilters, 16: e.target.checked })}
+                                                        className="w-4 h-4 cursor-pointer accent-amber-500"
+                                                    />
+                                                    <span className="text-sm text-stone-300">16-stackable</span>
+                                                </label>
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={stackSizeFilters[64]}
+                                                        onChange={(e) => setStackSizeFilters({ ...stackSizeFilters, 64: e.target.checked })}
+                                                        className="w-4 h-4 cursor-pointer accent-amber-500"
+                                                    />
+                                                    <span className="text-sm text-stone-300">64-stackable</span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        {/* Middle: Rarity Filter */}
+                                        <div className="mt-2">
+                                            <div className="text-sm font-semibold text-amber-400 mb-1">Rarity</div>
+                                            <div className="flex flex-col gap-2">
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={rarityFilters["common"]}
+                                                        onChange={(e) => setRarityFilters({ ...rarityFilters, "common": e.target.checked })}
+                                                        className="w-4 h-4 cursor-pointer accent-amber-500"
+                                                    />
+                                                    <span className="text-sm text-stone-300">Common</span>
+                                                </label>
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={rarityFilters["uncommon"]}
+                                                        onChange={(e) => setRarityFilters({ ...rarityFilters, "uncommon": e.target.checked })}
+                                                        className="w-4 h-4 cursor-pointer accent-amber-500"
+                                                    />
+                                                    <span className="text-sm text-stone-300">Uncommon</span>
+                                                </label>
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={rarityFilters["rare"]}
+                                                        onChange={(e) => setRarityFilters({ ...rarityFilters, "rare": e.target.checked })}
+                                                        className="w-4 h-4 cursor-pointer accent-amber-500"
+                                                    />
+                                                    <span className="text-sm text-stone-300">Rare</span>
+                                                </label>
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={rarityFilters["epic"]}
+                                                        onChange={(e) => setRarityFilters({ ...rarityFilters, "epic": e.target.checked })}
+                                                        className="w-4 h-4 cursor-pointer accent-amber-500"
+                                                    />
+                                                    <span className="text-sm text-stone-300">Epic</span>
+                                                </label>
                                             </div>
                                         </div>
 
