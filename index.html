@@ -458,7 +458,36 @@
                 fetch('items.json?v=' + Date.now())
                     .then(response => response.json())
                     .then(data => {
-                        setCatalogueItems(data);
+                        // Parse category and group fields from string representations to actual arrays
+                        const processedData = data.map(item => {
+                            const processed = { ...item };
+
+                            // Parse category if it's a string representation of an array
+                            if (typeof item.category === 'string') {
+                                try {
+                                    // Convert Python-style list string to JSON array string
+                                    const jsonStr = item.category.replace(/'/g, '"');
+                                    processed.category = JSON.parse(jsonStr);
+                                } catch (e) {
+                                    processed.category = [];
+                                }
+                            }
+
+                            // Parse group if it's a string representation of an array
+                            if (typeof item.group === 'string') {
+                                try {
+                                    // Convert Python-style list string to JSON array string
+                                    const jsonStr = item.group.replace(/'/g, '"');
+                                    processed.group = JSON.parse(jsonStr);
+                                } catch (e) {
+                                    processed.group = [];
+                                }
+                            }
+
+                            return processed;
+                        });
+
+                        setCatalogueItems(processedData);
                         setLoading(false);
                     })
                     .catch(error => {
@@ -1872,14 +1901,14 @@
 
                             {/* Advanced Filters Panel */}
                             {showColorPicker && (
-                                <div className="mt-4 p-4 bg-stone-800 rounded">
-                                    <div className="flex gap-6">
+                                <div className="mt-4 p-4 bg-stone-800 rounded overflow-visible">
+                                    <div className="flex gap-6 overflow-visible">
                                         {/* Left side: Tag Filters */}
-                                        <div className="flex flex-col gap-3 min-w-[200px]">
+                                        <div className="flex flex-col gap-3 min-w-[200px] overflow-visible">
                                             <div className="text-sm font-semibold text-amber-400 mb-1">Tag Filters</div>
 
                                             {/* Category Filter */}
-                                            <div className="relative">
+                                            <div className="relative z-50">
                                                 <input
                                                     type="text"
                                                     placeholder="Category..."
@@ -1910,7 +1939,7 @@
                                             </div>
 
                                             {/* Group Filter */}
-                                            <div className="relative">
+                                            <div className="relative z-40">
                                                 <input
                                                     type="text"
                                                     placeholder="Group..."
@@ -1941,7 +1970,7 @@
                                             </div>
 
                                             {/* Material Filter */}
-                                            <div className="relative">
+                                            <div className="relative z-30">
                                                 <input
                                                     type="text"
                                                     placeholder="Material..."
