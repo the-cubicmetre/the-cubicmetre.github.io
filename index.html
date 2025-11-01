@@ -427,12 +427,18 @@
 
         function MinecraftItemBuilder() {
             const [catalogueItems, setCatalogueItems] = useState([]);
-            const [cells, setCells] = useState([{ id: 1, slots: Array(50).fill(null) }]);
+            const [cells, setCells] = useState(() => {
+                const saved = localStorage.getItem('minecraftBuilder_cells');
+                return saved ? JSON.parse(saved) : [{ id: 1, slots: Array(50).fill(null) }];
+            });
             const [draggedItem, setDraggedItem] = useState(null);
             const [draggedSlot, setDraggedSlot] = useState(null);
             const [draggedCell, setDraggedCell] = useState(null);
             const [dragOverSlot, setDragOverSlot] = useState(null);
-            const [nextCellId, setNextCellId] = useState(2);
+            const [nextCellId, setNextCellId] = useState(() => {
+                const saved = localStorage.getItem('minecraftBuilder_nextCellId');
+                return saved ? parseInt(saved, 10) : 2;
+            });
             const [searchTerm, setSearchTerm] = useState('');
             const [loading, setLoading] = useState(true);
             const [showColorPicker, setShowColorPicker] = useState(false);
@@ -490,6 +496,25 @@
                         });
 
                         setCatalogueItems(processedData);
+
+                        const savedCells = localStorage.getItem('minecraftBuilder_cells');
+                        if (savedCells) {
+                            try {
+                                const parsedCells = JSON.parse(savedCells);
+                                const restoredCells = parsedCells.map(cell => ({
+                                    ...cell,
+                                    slots: cell.slots.map(slot => {
+                                        if (!slot || !slot.id) return null;
+                                        // Match item by id from catalogue
+                                        return processedData.find(item => item.id === slot.id) || null;
+                                    })
+                                }));
+                                setCells(restoredCells);
+                            } catch (e) {
+                                console.error('Error restoring cells:', e);
+                            }
+                        }
+
                         setLoading(false);
                     })
                     .catch(error => {
@@ -498,6 +523,14 @@
                         setLoading(false);
                     });
             }, []);
+
+            useEffect(() => {
+                localStorage.setItem('minecraftBuilder_cells', JSON.stringify(cells));
+            }, [cells]);
+
+            useEffect(() => {
+                localStorage.setItem('minecraftBuilder_nextCellId', nextCellId.toString());
+            }, [nextCellId]);
 
             // Handle divider dragging
             useEffect(() => {
